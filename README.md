@@ -107,7 +107,14 @@ export PROM_ENDPOINTS=export PROM_ENDPOINTS='{
 }'
 ```
 
-### 3) Run
+### 3) Run Option - [A]
 ```bash
-uv run python scraper.py
+source .venv/bin/activate
+python main.py
+```
+
+
+### 3) Run Option - [B]
+```bash
+./run.sh 
 ```
