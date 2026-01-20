@@ -39,7 +39,11 @@ logger = setup_logger()
 # STATIC CONFIG (CODE ONLY)
 # =========================
 AWS_REGION = "us-east-1"
-S3_BUCKET = "k8s-exported-metrics-opslyft"
+S3_BUCKET = os.getenv("S3_BUCKET")  #  Read from environment because bucket names are at a global level hence a unique prefix is must 
+
+if not S3_BUCKET:
+    raise RuntimeError("S3_BUCKET env var is required")
+
 BASE_S3_PATH = "k8s_data"
 HOURS_TO_BACKFILL = 8
 
@@ -92,9 +96,9 @@ PROM_ENDPOINTS = load_prom_endpoints()
 
 
 # =========================
-# HELPERS
+# HELPERS TO PRINT FIRST 3000 CHAR OF THE RESPONSE IN CASE OF NON 2000
 # =========================
-def response_snippet(resp, limit=500) -> str:
+def response_snippet(resp, limit=3000) -> str:
     try:
         return resp.text[:limit].replace("\n", " ")
     except Exception:
@@ -127,6 +131,8 @@ def scrape_and_upload_for_hour(offset_hours: int):
                 "step": STEP_SECONDS,
             }
 
+            logger.info(f"Making api call with params as {str(params)}")
+
             for attempt in range(1, MAX_RETRIES + 1):
                 try:
                     r = requests.get(
@@ -142,6 +148,8 @@ def scrape_and_upload_for_hour(offset_hours: int):
 
                     s3_key = f"{BASE_S3_PATH}/{alias}/{time_path}/{metric}.json"
 
+                    logger.info(f"Generate s3_key as {s3_key} extra = {alias}")
+
                     file_obj = io.BytesIO(r.content)
 
                     s3.upload_fileobj(
@@ -156,7 +164,7 @@ def scrape_and_upload_for_hour(offset_hours: int):
                         f"[OK] offset={offset_hours} "
                         f"attempt={attempt} "
                         f"s3://{S3_BUCKET}/{s3_key} "
-                        f"{prom_start_dt.isoformat()} → {end_dt.isoformat()}"
+                        f"{prom_start_dt.isoformat()} → {end_dt.isoformat()} extra = {alias}"
                     )
                     break
 
@@ -166,15 +174,16 @@ def scrape_and_upload_for_hour(offset_hours: int):
                             f"[FAIL] offset={offset_hours} "
                             f"alias={alias} metric={metric} "
                             f"attempts={MAX_RETRIES} "
-                            f"{prom_start_dt.isoformat()} → {end_dt.isoformat()} | {e}"
+                            f"{prom_start_dt.isoformat()} → {end_dt.isoformat()} | ERROR: {str(e)} extra = {alias}"
                         )
                     else:
                         sleep_for = RETRY_BACKOFF_SECONDS * (2 ** (attempt - 1))
+
                         logger.warning(
                             f"[RETRY] offset={offset_hours} "
                             f"alias={alias} metric={metric} "
                             f"attempt={attempt}/{MAX_RETRIES} "
-                            f"sleep={sleep_for}s | {e}"
+                            f"sleep={sleep_for}s | ERROR: {str(e)} extra = {alias}"
                         )
                         time.sleep(sleep_for)
 
